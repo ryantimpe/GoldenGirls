@@ -1,0 +1,135 @@
+---
+title: "The Golden Girls Drinking Game"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytext)
+library(ggthemr)
+
+tgg_colors <- c("#9affd0", #Aqua
+                "#ffb5f5", #Pink
+                "#5384ff", #Blue
+                "#ff9e53", #Orange
+                "#ffed89", #Yellow
+                "#de89ff", #Purple
+                "#ff6141", #Red/Orange
+                "#2dd49c", #Deep aqua
+                "#ff25ab" #Bright pink
+)
+
+tgg_background <- "#fcedcc" #Tan
+
+# remove previous effects:
+ggthemr_reset()
+# Define colours for your figures with define_palette
+tgg_theme <- define_palette(
+  swatch = c("#eeeeee", tgg_colors), # colours for plotting points and bars
+  gradient = c(lower = tgg_colors[2], upper = tgg_colors[1]), #upper and lower colours for continuous colours
+  background = tgg_background#defining a grey-ish background 
+)
+
+ggthemr(tgg_theme, type="outer")
+
+#GGPLOT THEME
+theme_tgg <- theme(
+  panel.grid = element_line(color = "#ffffff"),
+  axis.title = element_text(face = "bold"),
+  plot.title = element_text(color = tgg_colors[9], size = 20)
+)
+
+gg_trans_raw <- readRDS("data/Processed_Transcripts.RDS")
+
+gg_trans_1gram <- gg_trans_raw %>% 
+  unnest_tokens(word, Line, token="words", drop = FALSE)
+
+```
+
+I set out to build a Twitter bot that would come up with new Golden Girls quotes... I failed. I decided that in order to build a better bot, I should have a better understanding of the text I am working with. For this, I relied heavily on a [tidytext](https://cran.r-project.org/web/packages/tidytext/vignettes/tidytext.html) analysis of Golden Girls scripts.
+
+By now, [Julia Silge](https://twitter.com/juliasilge)'s paradigm has been used on many texts. For this post, I'm going to take a slightly less conventiona approach...
+
+*Winning the Golden Girls drinking game using TidyText analysis.*
+
+## The Game
+
+There are many permutations of the game online. For this analysis, I'm going to use these rules:
+Drink whenever...
+
+* The girls eat cheesecake
+* Rose mentions St. Olaf
+* Blanche is called a slut
+* Sophia begins a story "Picture it:"
+* Dorothy gives advice
+
+## The Goal
+
+In this crazy age of binge-watching and binge-drinking, I'm the find the solution to a simple question:
+
+*Which season of Golden Girls should you watch to maximize drink consumption?*
+
+## The Data
+
+To do this analysis, I scraped the transcripts of all `r length(unique(gg_trans_raw$Episode))` Golden Girls episodes from [Springfield! Springfield](https://www.springfieldspringfield.co.uk/episode_scripts.php?tv-show=the-golden-girls-1985) using [rvest](https://github.com/hadley/rvest). This source contains every spoken word in each episode.
+
+However, these transcripts are lacking both the stage directions and the names of the people speaking each line. This missing data makes parsing the text for the drinking game a bit more challenging.
+
+## Beating the Game
+
+### Cheesecake
+
+Without stage directions in the scripts, we can't directly see if the girl are eating cheesecake. However, we can infer a lower-bound estimate using the dialogue. For this, I use two rules: (1) if the women are talking about cheesecake, they are eating it and (2) if they talk cheescake within 20 lines of dialogue, they are still eating that same cheesecake.
+
+```{r cheesecake, include = FALSE}
+cheesecake <- gg_trans_1gram %>% 
+  filter(word %in%  c("cheesecake")) %>% 
+  group_by(Episode) %>% 
+  mutate(Line_delta = Line_number- lag(Line_number)) %>% 
+  ungroup() %>% 
+  group_by(Season) %>% 
+  summarise(count = sum(is.na(Line_delta) | Line_delta > 20))
+```
+
+```{r cheesecake_table, echo=FALSE, message=FALSE, fig.width=7, fig.height=4}
+cheesecake %>% ggplot(aes(x = factor(Season), y = count)) +
+  geom_col(color = "white", fill = tgg_colors[8]) +
+  geom_label(aes(label = count), size = 8, 
+             fill = tgg_colors[1], color = tgg_colors[9], nudge_y = 0) +
+  ggtitle("Cheesecakes eaten (lower estimate)") + 
+  xlab("Season") + ylab("Cheesecakes") +
+  theme_tgg
+```
+
+With this table, we immediately run into a problem. In my **extensive research**, I came across a piece of trivia multiple times claiming over 100 cheesecakes were eaten over the course of the series.[^cheesecake] Using the transcripts, I'm only coming up with `r sum(cheesecake$count)` cheesecakes eaten. I tried relaxing the rules to include any mention of the word "cake", but after reviewing the text, these references include exclusively non-cheesecakes.[^cakes]
+
+[^cheesecake]: I'm seeing this quoted by *super credible* sources including [Fox News](http://www.foxnews.com/entertainment/2017/01/17/10-things-never-knew-about-golden-girls.html), [Huffington Post](https://www.huffingtonpost.com/2015/09/14/the-golden-girls-_n_5512554.html), and [Mental Floss](http://mentalfloss.com/article/58118/7-times-golden-girls-talked-it-out-over-cheesecake). The closest I can find to a primary source is the [IMDB trivia](http://www.imdb.com/title/tt0088526/trivia) page. `r emo::ji("indifference")`
+
+[^cakes]: The Golden Girls enjoyed their desserts! In addition to cheesecake, they discussed wedding cake, marbled cake, chocolate cake, rum cake, birthday cake, St. Olaf friendship cap, sponge cake, bundt cake, fruitcake, hotcakes, and pancakes. They also once had crabcakes. `r emo::ji("cake")`
+
+### Rose & St. Olaf
+
+For Rose's stories about St. Olaf, I use a similar rule as the cheesecake. If St. Olaf is referenced in the transcript, I assume Rose is involved in the story. Mentions of St. Olaf within 20 lines of each other are the same story.
+
+```{r stolaf, include = FALSE}
+stolaf <- gg_trans_1gram %>% 
+  filter(word %in%  c("olaf")) %>% 
+  group_by(Episode) %>% 
+  mutate(Line_delta = Line_number- lag(Line_number)) %>% 
+  ungroup() %>% 
+  group_by(Season) %>% 
+  summarise(count = sum(is.na(Line_delta) | Line_delta > 20))
+```
+
+```{r stolaf_table, echo=FALSE, message=FALSE, fig.width=7, fig.height=4}
+stolaf %>% ggplot(aes(x = factor(Season), y = count)) +
+  geom_col(color = "white", fill = tgg_colors[3]) +
+  geom_label(aes(label = count), size = 8, 
+             fill = tgg_colors[1], color = tgg_colors[9], nudge_y = -1) +
+  ggtitle("Rose's stories about St. Olaf") + 
+  xlab("Season") + ylab("Mentions") +
+  theme_tgg
+```
+

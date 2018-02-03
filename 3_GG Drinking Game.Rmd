@@ -40,7 +40,8 @@ theme_tgg <- theme(
   axis.title = element_text(face = "bold"),
   plot.title = element_text(color = tgg_colors[9], size = 16),
   strip.background = element_rect(fill = tgg_colors[9]),
-  strip.text = element_text(color="#ffffff", face = "bold")
+  strip.text = element_text(color="#ffffff", face = "bold"),
+  legend.title = element_text(face = "bold")
 )
 
 gg_trans_raw <- readRDS("data/Processed_Transcripts.RDS")
@@ -80,7 +81,7 @@ In this crazy age of binge-watching and binge-drinking, I'm setting out to the f
 
 ## The Data
 
-To do this analysis, I scraped the transcripts of all `r length(unique(gg_trans_raw$Episode))` Golden Girls episodes from [Springfield! Springfield](https://www.springfieldspringfield.co.uk/episode_scripts.php?tv-show=the-golden-girls-1985) using [rvest](https://github.com/hadley/rvest). This source contains every spoken word in each episode.
+To do this analysis, I [scraped](https://github.com/ryantimpe/GoldenGirls/blob/master/data/Scrape_Transcripts.R) the transcripts of all `r length(unique(gg_trans_raw$Episode))` Golden Girls episodes from [Springfield! Springfield](https://www.springfieldspringfield.co.uk/episode_scripts.php?tv-show=the-golden-girls-1985) using [rvest](https://github.com/hadley/rvest). This source contains every spoken word in each episode.
 
 However, these transcripts are lacking both the stage directions and the names of the people speaking each line. This missing data makes parsing the text for the drinking game a bit more challenging.
 
@@ -91,11 +92,13 @@ However, these transcripts are lacking both the stage directions and the names o
 Without stage directions in the scripts, we can't directly see if the girl are eating cheesecake. However, we can infer a lower-bound estimate using the dialogue. For this, I use two rules: (1) if the women are talking about cheesecake, they are eating it and (2) if they talk cheescake within 20 lines of dialogue, they are still eating that same cheesecake.
 
 ```{r cheesecake, include = FALSE}
-cheesecake <- gg_trans_1gram %>% 
+cheesecake0 <- gg_trans_1gram %>% 
   filter(word %in%  c("cheesecake")) %>% 
   group_by(Episode) %>% 
   mutate(Line_delta = Line_number- lag(Line_number)) %>% 
-  ungroup() %>% 
+  ungroup() 
+
+cheesecake <- cheesecake0 %>% 
   group_by(Season) %>% 
   summarise(n = sum(is.na(Line_delta) | Line_delta > 20))
 ```
@@ -128,27 +131,35 @@ It looks like St. Olaf was not a huge part of Rose's character until the middle 
 
 ```{r golden_girls, include = FALSE}
 
-rose <- gg_trans_1gram %>% 
+rose0 <- gg_trans_1gram %>% 
   filter(word %in%  c("olaf")) %>% 
   group_by(Episode) %>% 
   mutate(Line_delta = Line_number- lag(Line_number)) %>% 
-  ungroup() %>% 
+  ungroup() 
+
+rose <- rose0%>% 
   group_by(Season) %>% 
   summarise(n = sum(is.na(Line_delta) | Line_delta > 20))
 
-blanche <- gg_trans_1gram %>% 
-  filter(word %in%  c("slut")) %>% 
+blanche0 <- gg_trans_1gram %>% 
+  filter(word %in%  c("slut"))
+
+blanche <- blanche0 %>% 
   count(Season)
 
-sophia <- gg_trans_2gram %>% 
-  filter(n_gram %in% c("picture it")) %>% 
+sophia0 <- gg_trans_2gram %>% 
+  filter(n_gram %in% c("picture it")) 
+
+sophia <- sophia0 %>% 
   count(Season)
 
-dorothy <- gg_trans_2gram %>% 
+dorothy0 <- gg_trans_2gram %>% 
   filter(n_gram %in% c("38 years")) %>% 
   bind_rows(
     gg_trans_3gram %>% 
-    filter(n_gram %in% c("it's me stan", "it's me stanley"))) %>% 
+    filter(n_gram %in% c("it's me stan", "it's me stanley"))) 
+
+dorothy <- dorothy0 %>% 
   count(Season)
 
 
@@ -260,6 +271,80 @@ cheesecake %>%
 
 I know exactly what you're thinking - watching an entire season of the Golden Girls is a big committment. You want to know which season will let you drink the most drinks in the **the shortest** time. I got you covered!
 
-I start by converting the episodes in each season to a running tally of time. Each half hour episode is approximately 22-minutes long, though 11 of the episodes were hour-long (44 minutes).
+I start by converting the episodes in each season to a running tally of time. Each half hour episode is approximately 22-minutes long, though 11 of the episodes were hour-long (44 minutes).[^eplength] From there, I can calculate the time for each drink when watching a given season.
 
+```{r timeline, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=3}
+episode_list <- gg_trans_raw %>% 
+  group_by(Episode) %>% 
+  summarize(Episode_Lines = max(Line_number)) %>% 
+  mutate(Episode_Length = ifelse(Episode_Lines >= nth(Episode_Lines, 11, order_by = desc(Episode_Lines)), 44*60, 22*60)) %>% 
+  mutate(Episode_s = as.numeric(substr(Episode, 3, 4)),
+         Season = as.numeric(substr(Episode, 1, 1))) %>% 
+  group_by(Season) %>% 
+  mutate(Season_Length = cumsum(Episode_Length) - Episode_Length) %>% 
+  ungroup()
 
+timeline <- bind_rows(list(cheesecake0 %>% mutate(Rule = "Cheesecake"), 
+                           rose0 %>% mutate(Rule = "Rose | St. Olaf"), 
+                           blanche0%>% mutate(Rule = "Blanche | Slut"), 
+                           sophia0%>% mutate(Rule = "Sophia | Picture It:"), 
+                           dorothy0%>% mutate(Rule = "Dorothy | Stan"))) %>% 
+  arrange(Episode, Line_number) %>% 
+  left_join(episode_list) %>% 
+  arrange(Episode, Line_number) %>% 
+  mutate(time  = (Episode_Length*(Line_number / Episode_Lines )) + Season_Length,
+         time_min = time/60) %>% 
+  group_by(Season) %>% 
+  mutate(n = row_number()) %>% 
+  ungroup()
+
+timeline %>% 
+  mutate(Rule = factor(Rule, levels = c("Cheesecake", "Rose | St. Olaf", "Blanche | Slut", "Sophia | Picture It:", "Dorothy | Stan"))) %>% 
+  ggplot(aes(x = time_min, y = n, group = factor(Season), color = factor(Season))) +
+  geom_line(size = 1.5) +
+  scale_color_manual(values = c("1" = tgg_colors[8],
+                               "2" = tgg_colors[2],
+                               "3" = tgg_colors[3], 
+                               "4" = tgg_colors[7], 
+                               "5" = tgg_colors[6],
+                               "6" = tgg_colors[9],
+                               "7" = tgg_colors[4]),
+                     name = "Season") + 
+  scale_x_continuous(breaks = seq(0, 600, 100)) +
+  ggtitle("Cumulative drink count for each season of The Golden Girls") + 
+  xlab("Time (minutes)") + ylab("Drinks") +
+  theme(legend.position = "right") +
+  theme_tgg
+
+```
+
+[^eplength]: Without an explicit list of the longer episodes, I assign the the 11 episodes with the most lines in the transcript as the hour-long ones. `r emo::ji("time")`
+
+Season 5 is the way to go for steady drink consumption all night long. However, if you're playing the Golden Girls drinking game with speed in mind, perhaps seasons 4 or 6 are the more logical choices. In fact, it will take over 7 hours of viewing until the season 5 drink count passes seasons 4 or 6.
+
+With seasons 4 and 6, you get an hour of relaxing tv time before consuming up to 30 drinks in 20 minutes. What's causing that spike?
+
+```{r timeline2, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=5}
+
+timeline %>% 
+  filter(Season %in% c(4, 5, 6)) %>% 
+  mutate(Season = paste("Season", Season)) %>% 
+  mutate(Rule = factor(Rule, levels = c("Cheesecake", "Rose | St. Olaf", "Blanche | Slut", "Sophia | Picture It:", "Dorothy | Stan"))) %>% 
+  ggplot(aes(x = time_min, y = n, color = Rule)) +
+  geom_line(size = 1.5, color = "#cccccc") +
+  geom_point(size = 2, alpha = 0.75)+
+  scale_color_manual(values = c("Cheesecake" = tgg_colors[8],
+                               "Rose | St. Olaf" = tgg_colors[3],
+                               "Blanche | Slut" = tgg_colors[2], 
+                               "Sophia | Picture It:" = tgg_colors[7], 
+                               "Dorothy | Stan" = tgg_colors[6])) + 
+  scale_x_continuous(breaks = seq(0, 600, 100)) +
+  facet_grid(factor(Season) ~ . ) +
+  ggtitle("Cumulative drink count by trigger, Seasons 4-6") + 
+  xlab("Time (minutes)") + ylab("Drinks") +
+  theme(legend.position = "bottom") +
+  theme_tgg
+
+```
+
+Both spikes in seasons 4 and 6 are caused by Rose's St. Olaf storylines. The ramp in season 6 also has a few Dorothy / Stan drinks as well.

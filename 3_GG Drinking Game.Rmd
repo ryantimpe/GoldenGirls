@@ -57,13 +57,11 @@ gg_trans_3gram <- gg_trans_raw %>%
 
 ```
 
-I set out to build a Twitter bot that would come up with new Golden Girls quotes... I failed. I decided that in order to build a better bot, I should have a better understanding of the text I am working with. For this, I relied heavily on a [tidytext](https://cran.r-project.org/web/packages/tidytext/vignettes/tidytext.html) analysis of Golden Girls scripts.
+I had set out to build a Twitter bot that would come up with new Golden Girls quotes... I failed. I decided that in order to build a better bot, I should have a better understanding of the text which with I am working. The obvious choice as a  [tidytext](https://cran.r-project.org/web/packages/tidytext/vignettes/tidytext.html) analysis of Golden Girls scripts using [Julia Silge](https://twitter.com/juliasilge)'s paradigm. 
 
-By now, [Julia Silge](https://twitter.com/juliasilge)'s paradigm has been used on many texts. For this post, I'm going to take a slightly less conventional approach...
+This approach has been used on many texts by now, from Pride and Prejudice to [Donald Trump's tweets](http://varianceexplained.org/r/trump-tweets/). For this post, I am going to jump off the rails a bit and do a tidytext analysis for... **The Golden Girls drinking game.**
 
-**The Golden Girls drinking game.**
-
-## The Rules
+### The Rules
 
 There are many permutations of the game online. For this analysis, I'm going to use these rules: Drink each time...
 
@@ -73,23 +71,19 @@ There are many permutations of the game online. For this analysis, I'm going to 
 * Sophia begins a story "Picture it:"
 * Dorothy exclaims "38 years" or says "It's me, Stan"
 
-## The Goal
+### The Goal
 
-In this crazy age of binge-watching and binge-drinking, I'm setting out to the find the solution to a simple question:
+In this crazy age of binge-watching and binge-drinking, I'm setting out to the find the solution to a simple question: **Which season of Golden Girls should you watch to maximize drink consumption?**
 
-**Which season of Golden Girls should you watch to maximize drink consumption?**
+### The Data
 
-## The Data
+To do this analysis, I [scraped](https://github.com/ryantimpe/GoldenGirls/blob/master/data/Scrape_Transcripts.R) the transcripts of all `r length(unique(gg_trans_raw$Episode))` Golden Girls episodes from [Springfield! Springfield](https://www.springfieldspringfield.co.uk/episode_scripts.php?tv-show=the-golden-girls-1985) using [rvest](https://github.com/hadley/rvest). This source contains every spoken word in each episode. However, these transcripts are lacking both stage directions and the names of the people speaking each line. This missing data makes parsing the text for the drinking game a bit more challenging.
 
-To do this analysis, I [scraped](https://github.com/ryantimpe/GoldenGirls/blob/master/data/Scrape_Transcripts.R) the transcripts of all `r length(unique(gg_trans_raw$Episode))` Golden Girls episodes from [Springfield! Springfield](https://www.springfieldspringfield.co.uk/episode_scripts.php?tv-show=the-golden-girls-1985) using [rvest](https://github.com/hadley/rvest). This source contains every spoken word in each episode.
+### The Game
 
-However, these transcripts are lacking both the stage directions and the names of the people speaking each line. This missing data makes parsing the text for the drinking game a bit more challenging.
+#### Cheesecake
 
-## The Game
-
-### Cheesecake
-
-Without stage directions in the scripts, we can't directly see if the girl are eating cheesecake. However, we can infer a lower-bound estimate using the dialogue. For this, I use two rules: (1) if the women are talking about cheesecake, they are eating it and (2) if they talk cheescake within 20 lines of dialogue, they are still eating that same cheesecake.
+Without stage directions in the scripts, I can't directly see if the women are eating cheesecake. Instead, I infer a lower-bound estimate using the dialogue. For this, I use two rules: (1) if the women are talking about cheesecake, they are eating it and (2) if they talk cheescake within 20 lines of dialogue, they are still eating that same cheesecake.
 
 ```{r cheesecake, include = FALSE}
 cheesecake0 <- gg_trans_1gram %>% 
@@ -107,27 +101,23 @@ cheesecake <- cheesecake0 %>%
 cheesecake %>% ggplot(aes(x = factor(Season), y = n)) +
   geom_col(color = "white", fill = tgg_colors[8]) +
   geom_label(aes(label = n), size = 6, 
-             fill = tgg_colors[1], color = tgg_colors[9], nudge_y = 0) +
+             fill = tgg_colors[1], color = tgg_colors[9], nudge_y = -0.5) +
   ggtitle("Cheesecakes discussed in The Golden Girls") + 
   xlab("Season") + ylab("Cheesecakes") +
   theme_tgg
 ```
 
-With this table, we immediately run into a problem. In my **extensive research**, I came across a piece of trivia multiple times claiming over 100 cheesecakes were eaten over the course of the series.[^cheesecake] Using the transcripts, I'm only coming up with `r sum(cheesecake$count)` cheesecakes eaten. I tried relaxing the rules to include any mention of the word "cake", but after reviewing the text, these references include exclusively non-cheesecakes.[^cakes]
+With this chart[^ggtheme], we run into a problem. In my *extensive research*, I came across a piece of trivia multiple times claiming over 100 cheesecakes were eaten over the course of the series.[^cheesecake] Using the transcripts with these rules, I'm only calculating `r sum(cheesecake$n)` cheesecakes. I tried relaxing the rules to include any mention of the word "cake", but after reviewing the text, these references include exclusively non-cheesecakes.[^cakes] For now, I'll assume the missing cheesecakes are uniformly distributed across the seasons, unaffecting the results.
+
+[^ggtheme]: Have you noticed the unconventional (bright and tan) plot colors? This is my attempt at a Golden Girls (wicker furniture in Miami) theme in ggplot using [ggthemr](https://www.shanelynn.ie/themes-and-colours-for-r-ggplots-with-ggthemr/). `r emo::ji("dancing")`
 
 [^cheesecake]: I'm seeing this quoted by *super credible* sources including [Fox News](http://www.foxnews.com/entertainment/2017/01/17/10-things-never-knew-about-golden-girls.html), [Huffington Post](https://www.huffingtonpost.com/2015/09/14/the-golden-girls-_n_5512554.html), and [Mental Floss](http://mentalfloss.com/article/58118/7-times-golden-girls-talked-it-out-over-cheesecake). The closest I can find to a primary source is the [IMDB trivia](http://www.imdb.com/title/tt0088526/trivia) page. `r emo::ji("indifference")`
 
-[^cakes]: The Golden Girls enjoyed their desserts! In addition to cheesecake, they discussed wedding cake, marbled cake, chocolate cake, rum cake, birthday cake, St. Olaf friendship cap, sponge cake, bundt cake, fruitcake, hotcakes, and pancakes. They also once had crabcakes. `r emo::ji("cake")`
+[^cakes]: The Golden Girls enjoyed their desserts! In addition to cheesecake, they discussed wedding cake, marbled cake, chocolate cake, rum cake, birthday cake, St. Olaf friendship cake, sponge cake, bundt cake, fruitcake, hotcakes, and pancakes. They also once had crabcakes. `r emo::ji("cake")`
 
-### The Golden Girls
+#### The Golden Girls
 
-Calculating the drinks for each of the four women follows a similar methodology, with just a few changes, explained below.
-
-#### Rose & St. Olaf
-
-For Rose's stories about St. Olaf, I use a similar rule as the cheesecake. If St. Olaf is referenced in the transcript, I assume Rose is involved in the story. Mentions of St. Olaf within 20 lines of each other are the same story.
-
-It looks like St. Olaf was not a huge part of Rose's character until the middle seasons. Rose's first long (>10 lines) story about St. Olaf was in episode 4 of season 2, and at that point, her roommates were already tired of them.
+Calculating the drink triggers for each of the remaining rules follows a similar methodology, with just a few changes, explained below.
 
 ```{r golden_girls, include = FALSE}
 
@@ -165,9 +155,15 @@ dorothy <- dorothy0 %>%
 
 ```
 
-#### Blanche & the S* word
+##### Rose & St. Olaf
 
-The 80's were a different time and while it's not acceptable today, the Golden Girls really liked to refer to each other (but mostly Blanch) as sluts. In fact, the word "slut" shows up `r sum(blanche$n)` times throughout the series, which is *exactly* the same number of times as "cheesecake". That's... ridiculous.
+For Rose's stories about St. Olaf, I use a similar rule as the cheesecake. If St. Olaf is referenced in the transcript, I assume Rose is involved in the story. Mentions of St. Olaf within 20 lines of each other are the same story and won't be counted.
+
+It looks like St. Olaf was not a huge part of Rose's character until the middle seasons. Rose's first long (>10 lines) story about St. Olaf was in episode 4 of season 2.
+
+##### Blanche & the S* word
+
+The 80's were a different time and while it's not acceptable today, the Golden Girls really liked to refer to each other (but mostly Blanche) as sluts. In fact, the word "slut" shows up `r sum(blanche$n)` times throughout the series, which is **exactly** the same number of times as "cheesecake". That's... ridiculous.[^cheesecake_cor]
 
 ```{r slut_cheesecake, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=2.5}
 
@@ -176,6 +172,11 @@ slut_v_cheesecake <- cheesecake %>%
   bind_rows(blanche %>% 
               mutate(Word = "slut") %>% 
               mutate(n = -n))
+
+corr_sc <- slut_v_cheesecake %>% 
+  mutate(n = abs(n)) %>% 
+  spread(Word, n) %>% 
+  summarize(cor = cor(cheesecake, slut))
 
 max_y = max(abs(slut_v_cheesecake$n))
 
@@ -194,15 +195,17 @@ slut_v_cheesecake %>% ggplot(aes(x = factor(Season), y = n)) +
 
 ```
 
+[^cheesecake_cor]: Fun fact: There's a `r round(as.numeric(corr_sc), 2)` correlation between the frequency of the word "cheesecake" and "slut" in a given season. `r emo::ji("chart")`
+
 In spirit of equal opportunity, the rule in this game is to count drinks when *anyone* is called a slut.
 
-#### Sophia & Picture It: Sicily...
+##### Sophia & Picture It: Sicily...
 
 Finding instances of Sophia beginning an story with "Picture it" is easy. Rather than splitting the transcripts into single words, I use bigrams from all instances of "picture it".
 
 Sophia's most famous use of the phrase is to begin her stories about Sicily. Looking at the trigrams of the text, she also used it for Brooklyn, Germany, Morocco, and Miami.
 
-#### Dorothy & Stanley
+##### Dorothy & Stanley
 
 ```{r dororthy_alt, include = FALSE}
 dorothy_alt <- gg_trans_1gram %>% 
@@ -211,11 +214,13 @@ dorothy_alt <- gg_trans_1gram %>%
   count(Season)
 ```
 
-The original rule for Dorothy was have a drink each time Dorothy refered to Sophia as "Ma". Exploratory data analyis shows that this happened `r sum(dorothy_alt$n)` times over the course of the series and all game players would pass out.
+The original rule for Dorothy was to drink each time Dorothy refered to Sophia as "Ma". Exploratory data analyis shows that this happened `r sum(dorothy_alt$n)` distinct times over the course of the series and all game players would pass out from drink consumption within 20 minutes.[^citationneeded]
 
-Throughout the series, Dorothy is hung up on her shady ex-husband, Stan. An alternative rule I found is to drink whenever Dorothy exclaims "38 years"" - the length of her marriage - or she uses the phrase "It's me, Stan" (which happens more often than you'd think).
+[^citationneeded]: Citation needed. `r emo::ji("teacher")`
 
-#### Combining the rules
+Throughout the series, Dorothy is hung up on her sleazy ex-husband, Stan. An alternative rule I found is to drink whenever Dorothy exclaims "38 years" - the length of her marriage - or she uses the phrase "It's me, Stan" (which happens more often than you'd think).
+
+##### Combining the rules
 
 ```{r other_girls_table, echo=FALSE, message=FALSE, fig.width=9, fig.height=3}
 other_girls <- rose %>% mutate(Rule = "Rose | St. Olaf") %>% 
@@ -239,13 +244,13 @@ other_girls %>% ggplot(aes(x = factor(Season), y = n)) +
   theme_tgg
 ```
 
-Well... Rose will drive the drinks in this game.
+Mentions of St. Olaf will drive the drink consumption in this game. There are alternative rules for the Golden Girls drinking game where each player chooses a character and only drinks when that character's rule is triggered. In those cases... pick Rose.
 
-## The Results
+### The Results
 
 So you and your closest friends get together on a Saturday night to play the Golden Girls drinking game and need to pick a season to maximize consumption. 
 
-Pick season 5... by any of the later seasons will work.
+By choosing season 5, you will consume the most beverages over the course of the evening. But is it the most efficient way to consume them?
 
 ```{r result_table, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=3}
 cheesecake %>% 
@@ -253,7 +258,7 @@ cheesecake %>%
   bind_rows(other_girls) %>%   
   mutate(Rule = factor(Rule, levels = c("Cheesecake", "Rose | St. Olaf", "Blanche | Slut", "Sophia | Picture It:", "Dorothy | Stan"))) %>% 
   ggplot(aes(x = factor(Season), y = n, fill = )) +
-  geom_col(aes(fill = Rule), color = "white") +
+  geom_col(aes(fill = Rule), color = "white", width = 0.75) +
   scale_fill_manual(values = c("Cheesecake" = tgg_colors[8],
                                "Rose | St. Olaf" = tgg_colors[3],
                                "Blanche | Slut" = tgg_colors[2], 
@@ -261,17 +266,19 @@ cheesecake %>%
                                "Dorothy | Stan" = tgg_colors[6])) + 
   #geom_label(aes(label = n), size = 4, 
   #           fill = tgg_colors[1], color = tgg_colors[9], nudge_y = -1) +
-  ggtitle("Drinks per season") + 
+  labs(title = "Drinks per season of The Golden Girls") + 
   xlab("Season") + ylab("Mentions") +
   theme(legend.position = "right") +
   theme_tgg
 ```
 
-## Extending the results
+### Minute-by-minute gameplay
 
-I know exactly what you're thinking - watching an entire season of the Golden Girls is a big committment. You want to know which season will let you drink the most drinks in the **the shortest** time. I got you covered!
+Watching an entire season (9+ hours) of a show is quite the committment for casual evening drinking game. Which season should you watch in order to consume as many drinks as you can in the **shortest time**?
 
-I start by converting the episodes in each season to a running tally of time. Each half hour episode is approximately 22-minutes long, though 11 of the episodes were hour-long (44 minutes).[^eplength] From there, I can calculate the time for each drink when watching a given season.
+I start by converting the episodes in each season to a running tally of time. Each half-hour episode is approximately 22-minutes long, though 11 of the episodes were hour-long (44 minutes).[^eplength] From there, I calculate the timing for each drink when watching a given season.
+
+[^eplength]: Without an explicit list of the longer episodes, I assign the the 11 episodes with the most lines in the transcript as the hour-long ones. `r emo::ji("time")`
 
 ```{r timeline, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=3}
 episode_list <- gg_trans_raw %>% 
@@ -311,18 +318,16 @@ timeline %>%
                                "7" = tgg_colors[4]),
                      name = "Season") + 
   scale_x_continuous(breaks = seq(0, 600, 100)) +
-  ggtitle("Cumulative drink count for each season of The Golden Girls") + 
+  labs(title = "Cumulative drinks for each season of The Golden Girls") + 
   xlab("Time (minutes)") + ylab("Drinks") +
   theme(legend.position = "right") +
   theme_tgg
 
 ```
 
-[^eplength]: Without an explicit list of the longer episodes, I assign the the 11 episodes with the most lines in the transcript as the hour-long ones. `r emo::ji("time")`
-
 Season 5 is the way to go for steady drink consumption all night long. However, if you're playing the Golden Girls drinking game with speed in mind, perhaps seasons 4 or 6 are the more logical choices. In fact, it will take over 7 hours of viewing until the season 5 drink count passes seasons 4 or 6.
 
-With seasons 4 and 6, you get an hour of relaxing tv time before consuming up to 30 drinks in 20 minutes. What's causing that spike?
+With seasons 4 and 6, you get an hour at a relaxed pace before consuming up to 30 drinks in 20 minutes. What's causing that ramp?
 
 ```{r timeline2, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=5}
 
@@ -340,11 +345,14 @@ timeline %>%
                                "Dorothy | Stan" = tgg_colors[6])) + 
   scale_x_continuous(breaks = seq(0, 600, 100)) +
   facet_grid(factor(Season) ~ . ) +
-  ggtitle("Cumulative drink count by trigger, Seasons 4-6") + 
+  labs(title = "Cumulative drink count by trigger, Seasons 4-6",
+       caption = "@RyanTimpe") + 
   xlab("Time (minutes)") + ylab("Drinks") +
   theme(legend.position = "bottom") +
   theme_tgg
 
 ```
 
-Both spikes in seasons 4 and 6 are caused by Rose's St. Olaf storylines. The ramp in season 6 also has a few Dorothy / Stan drinks as well.
+Both ramps in seasons 4 and 6 are caused by Rose's St. Olaf storylines. The ramp in season 6 also has a few Dorothy / Stan drinks as well. Season 6 is also noteworthy as there is a gap between drinks lasting more than an hour starting around hour 4.
+
+The result? Season 4 is the way to go for to maximize drink consumption in a reasonable time.

@@ -15,7 +15,7 @@ tgg_colors <- c("#9affd0", #Aqua
                 "#5384ff", #Blue
                 "#ff9e53", #Orange
                 "#ffed89", #Yellow
-                "#de89ff", #Purple
+                "#c477de", #Purple
                 "#ff6141", #Red/Orange
                 "#2dd49c", #Deep aqua
                 "#ff25ab" #Bright pink
@@ -38,7 +38,9 @@ ggthemr(tgg_theme, type="outer")
 theme_tgg <- theme(
   panel.grid = element_line(color = "#ffffff"),
   axis.title = element_text(face = "bold"),
-  plot.title = element_text(color = tgg_colors[9], size = 20)
+  plot.title = element_text(color = tgg_colors[9], size = 16),
+  strip.background = element_rect(fill = tgg_colors[9]),
+  strip.text = element_text(color="#ffffff", face = "bold")
 )
 
 gg_trans_raw <- readRDS("data/Processed_Transcripts.RDS")
@@ -46,30 +48,35 @@ gg_trans_raw <- readRDS("data/Processed_Transcripts.RDS")
 gg_trans_1gram <- gg_trans_raw %>% 
   unnest_tokens(word, Line, token="words", drop = FALSE)
 
+gg_trans_2gram <- gg_trans_raw %>% 
+  unnest_tokens(n_gram, Line, token="ngrams", n=2, drop = FALSE)
+
+gg_trans_3gram <- gg_trans_raw %>%
+  unnest_tokens(n_gram, Line, token="ngrams", n=3, drop = FALSE)
+
 ```
 
 I set out to build a Twitter bot that would come up with new Golden Girls quotes... I failed. I decided that in order to build a better bot, I should have a better understanding of the text I am working with. For this, I relied heavily on a [tidytext](https://cran.r-project.org/web/packages/tidytext/vignettes/tidytext.html) analysis of Golden Girls scripts.
 
-By now, [Julia Silge](https://twitter.com/juliasilge)'s paradigm has been used on many texts. For this post, I'm going to take a slightly less conventiona approach...
+By now, [Julia Silge](https://twitter.com/juliasilge)'s paradigm has been used on many texts. For this post, I'm going to take a slightly less conventional approach...
 
-*Winning the Golden Girls drinking game using TidyText analysis.*
+**The Golden Girls drinking game.**
 
-## The Game
+## The Rules
 
-There are many permutations of the game online. For this analysis, I'm going to use these rules:
-Drink whenever...
+There are many permutations of the game online. For this analysis, I'm going to use these rules: Drink each time...
 
-* The girls eat cheesecake
-* Rose mentions St. Olaf
-* Blanche is called a slut
+* The ladies eat cheesecake
+* Rose tells a story about St. Olaf
+* Blanche (or anyone) is called a slut
 * Sophia begins a story "Picture it:"
-* Dorothy gives advice
+* Dorothy exclaims "38 years" or says "It's me, Stan"
 
 ## The Goal
 
-In this crazy age of binge-watching and binge-drinking, I'm the find the solution to a simple question:
+In this crazy age of binge-watching and binge-drinking, I'm setting out to the find the solution to a simple question:
 
-*Which season of Golden Girls should you watch to maximize drink consumption?*
+**Which season of Golden Girls should you watch to maximize drink consumption?**
 
 ## The Data
 
@@ -77,7 +84,7 @@ To do this analysis, I scraped the transcripts of all `r length(unique(gg_trans_
 
 However, these transcripts are lacking both the stage directions and the names of the people speaking each line. This missing data makes parsing the text for the drinking game a bit more challenging.
 
-## Beating the Game
+## The Game
 
 ### Cheesecake
 
@@ -90,15 +97,15 @@ cheesecake <- gg_trans_1gram %>%
   mutate(Line_delta = Line_number- lag(Line_number)) %>% 
   ungroup() %>% 
   group_by(Season) %>% 
-  summarise(count = sum(is.na(Line_delta) | Line_delta > 20))
+  summarise(n = sum(is.na(Line_delta) | Line_delta > 20))
 ```
 
-```{r cheesecake_table, echo=FALSE, message=FALSE, fig.width=7, fig.height=4}
-cheesecake %>% ggplot(aes(x = factor(Season), y = count)) +
+```{r cheesecake_table, echo=FALSE, message=FALSE, fig.width=9, fig.height=2.5}
+cheesecake %>% ggplot(aes(x = factor(Season), y = n)) +
   geom_col(color = "white", fill = tgg_colors[8]) +
-  geom_label(aes(label = count), size = 8, 
+  geom_label(aes(label = n), size = 6, 
              fill = tgg_colors[1], color = tgg_colors[9], nudge_y = 0) +
-  ggtitle("Cheesecakes eaten (lower estimate)") + 
+  ggtitle("Cheesecakes discussed in The Golden Girls") + 
   xlab("Season") + ylab("Cheesecakes") +
   theme_tgg
 ```
@@ -109,27 +116,150 @@ With this table, we immediately run into a problem. In my **extensive research**
 
 [^cakes]: The Golden Girls enjoyed their desserts! In addition to cheesecake, they discussed wedding cake, marbled cake, chocolate cake, rum cake, birthday cake, St. Olaf friendship cap, sponge cake, bundt cake, fruitcake, hotcakes, and pancakes. They also once had crabcakes. `r emo::ji("cake")`
 
-### Rose & St. Olaf
+### The Golden Girls
+
+Calculating the drinks for each of the four women follows a similar methodology, with just a few changes, explained below.
+
+#### Rose & St. Olaf
 
 For Rose's stories about St. Olaf, I use a similar rule as the cheesecake. If St. Olaf is referenced in the transcript, I assume Rose is involved in the story. Mentions of St. Olaf within 20 lines of each other are the same story.
 
-```{r stolaf, include = FALSE}
-stolaf <- gg_trans_1gram %>% 
+It looks like St. Olaf was not a huge part of Rose's character until the middle seasons. Rose's first long (>10 lines) story about St. Olaf was in episode 4 of season 2, and at that point, her roommates were already tired of them.
+
+```{r golden_girls, include = FALSE}
+
+rose <- gg_trans_1gram %>% 
   filter(word %in%  c("olaf")) %>% 
   group_by(Episode) %>% 
   mutate(Line_delta = Line_number- lag(Line_number)) %>% 
   ungroup() %>% 
   group_by(Season) %>% 
-  summarise(count = sum(is.na(Line_delta) | Line_delta > 20))
+  summarise(n = sum(is.na(Line_delta) | Line_delta > 20))
+
+blanche <- gg_trans_1gram %>% 
+  filter(word %in%  c("slut")) %>% 
+  count(Season)
+
+sophia <- gg_trans_2gram %>% 
+  filter(n_gram %in% c("picture it")) %>% 
+  count(Season)
+
+dorothy <- gg_trans_2gram %>% 
+  filter(n_gram %in% c("38 years")) %>% 
+  bind_rows(
+    gg_trans_3gram %>% 
+    filter(n_gram %in% c("it's me stan", "it's me stanley"))) %>% 
+  count(Season)
+
+
 ```
 
-```{r stolaf_table, echo=FALSE, message=FALSE, fig.width=7, fig.height=4}
-stolaf %>% ggplot(aes(x = factor(Season), y = count)) +
-  geom_col(color = "white", fill = tgg_colors[3]) +
-  geom_label(aes(label = count), size = 8, 
-             fill = tgg_colors[1], color = tgg_colors[9], nudge_y = -1) +
-  ggtitle("Rose's stories about St. Olaf") + 
+#### Blanche & the S* word
+
+The 80's were a different time and while it's not acceptable today, the Golden Girls really liked to refer to each other (but mostly Blanch) as sluts. In fact, the word "slut" shows up `r sum(blanche$n)` times throughout the series, which is *exactly* the same number of times as "cheesecake". That's... ridiculous.
+
+```{r slut_cheesecake, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=2.5}
+
+slut_v_cheesecake <- cheesecake %>% 
+  mutate(Word = "cheesecake")%>% 
+  bind_rows(blanche %>% 
+              mutate(Word = "slut") %>% 
+              mutate(n = -n))
+
+max_y = max(abs(slut_v_cheesecake$n))
+
+slut_v_cheesecake %>% ggplot(aes(x = factor(Season), y = n)) +
+  geom_bar(aes(fill = Word), stat="identity", color = "white",
+           width = 0.5) +
+  geom_hline(yintercept = 0, color = "#666666", size = 0.25) +
+  # coord_flip() +
+  scale_fill_manual(values = c("cheesecake" = tgg_colors[8],
+                               "slut" = tgg_colors[2])) + 
+  scale_y_continuous(limits = c(-max_y, max_y)) +
+  ggtitle("Frequency of 'cheesecake' and 'slut' usage in The Golden Girls") + 
   xlab("Season") + ylab("Mentions") +
+  theme(legend.position = "right") +
+  theme_tgg
+
+```
+
+In spirit of equal opportunity, the rule in this game is to count drinks when *anyone* is called a slut.
+
+#### Sophia & Picture It: Sicily...
+
+Finding instances of Sophia beginning an story with "Picture it" is easy. Rather than splitting the transcripts into single words, I use bigrams from all instances of "picture it".
+
+Sophia's most famous use of the phrase is to begin her stories about Sicily. Looking at the trigrams of the text, she also used it for Brooklyn, Germany, Morocco, and Miami.
+
+#### Dorothy & Stanley
+
+```{r dororthy_alt, include = FALSE}
+dorothy_alt <- gg_trans_1gram %>% 
+  filter(word %in%  c("ma")) %>% 
+  distinct() %>% 
+  count(Season)
+```
+
+The original rule for Dorothy was have a drink each time Dorothy refered to Sophia as "Ma". Exploratory data analyis shows that this happened `r sum(dorothy_alt$n)` times over the course of the series and all game players would pass out.
+
+Throughout the series, Dorothy is hung up on her shady ex-husband, Stan. An alternative rule I found is to drink whenever Dorothy exclaims "38 years"" - the length of her marriage - or she uses the phrase "It's me, Stan" (which happens more often than you'd think).
+
+#### Combining the rules
+
+```{r other_girls_table, echo=FALSE, message=FALSE, fig.width=9, fig.height=3}
+other_girls <- rose %>% mutate(Rule = "Rose | St. Olaf") %>% 
+  bind_rows(blanche %>% mutate(Rule = "Blanche | Slut")) %>% 
+  bind_rows(sophia %>% mutate(Rule = "Sophia | Picture It:")) %>% 
+  bind_rows(dorothy %>% mutate(Rule = "Dorothy | Stan")) %>% 
+  mutate(Rule = factor(Rule, levels = c("Rose | St. Olaf", "Blanche | Slut", "Sophia | Picture It:", "Dorothy | Stan")))
+  
+other_girls %>% ggplot(aes(x = factor(Season), y = n)) +
+  geom_col(aes(fill = Rule), color = "white") +
+  scale_fill_manual(values = c("Rose | St. Olaf" = tgg_colors[3],
+                               "Blanche | Slut" = tgg_colors[2], 
+                               "Sophia | Picture It:" = tgg_colors[7], 
+                               "Dorothy | Stan" = tgg_colors[6])) + 
+  #geom_label(aes(label = n), size = 4, 
+  #           fill = tgg_colors[1], color = tgg_colors[9], nudge_y = -1) +
+  facet_grid(.~Rule)+
+  ggtitle("Rose, Blanche, Sophia, and Dorothy triggers") + 
+  xlab("Season") + ylab("Mentions") +
+  theme(legend.position = "bottom") +
   theme_tgg
 ```
+
+Well... Rose will drive the drinks in this game.
+
+## The Results
+
+So you and your closest friends get together on a Saturday night to play the Golden Girls drinking game and need to pick a season to maximize consumption. 
+
+Pick season 5... by any of the later seasons will work.
+
+```{r result_table, echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=3}
+cheesecake %>% 
+  mutate(Rule = "Cheesecake") %>% 
+  bind_rows(other_girls) %>%   
+  mutate(Rule = factor(Rule, levels = c("Cheesecake", "Rose | St. Olaf", "Blanche | Slut", "Sophia | Picture It:", "Dorothy | Stan"))) %>% 
+  ggplot(aes(x = factor(Season), y = n, fill = )) +
+  geom_col(aes(fill = Rule), color = "white") +
+  scale_fill_manual(values = c("Cheesecake" = tgg_colors[8],
+                               "Rose | St. Olaf" = tgg_colors[3],
+                               "Blanche | Slut" = tgg_colors[2], 
+                               "Sophia | Picture It:" = tgg_colors[7], 
+                               "Dorothy | Stan" = tgg_colors[6])) + 
+  #geom_label(aes(label = n), size = 4, 
+  #           fill = tgg_colors[1], color = tgg_colors[9], nudge_y = -1) +
+  ggtitle("Drinks per season") + 
+  xlab("Season") + ylab("Mentions") +
+  theme(legend.position = "right") +
+  theme_tgg
+```
+
+## Extending the results
+
+I know exactly what you're thinking - watching an entire season of the Golden Girls is a big committment. You want to know which season will let you drink the most drinks in the **the shortest** time. I got you covered!
+
+I start by converting the episodes in each season to a running tally of time. Each half hour episode is approximately 22-minutes long, though 11 of the episodes were hour-long (44 minutes).
+
 

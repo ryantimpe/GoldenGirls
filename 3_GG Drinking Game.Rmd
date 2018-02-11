@@ -310,6 +310,7 @@ timeline <- bind_rows(list(cheesecake0 %>% mutate(Rule = "Cheesecake"),
   arrange(Episode, Line_number) %>% 
   mutate(time  = (Episode_Length*(Line_number / Episode_Lines )) + Season_Length,
          time_min = time/60) %>% 
+  filter(is.na(Line_delta) | Line_delta >= 20) %>% #Added 11 Feb 2018
   group_by(Season) %>% 
   mutate(n = row_number()) %>% 
   ungroup()
